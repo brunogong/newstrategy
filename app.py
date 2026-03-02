@@ -3,7 +3,6 @@ import pandas as pd
 import requests
 import plotly.graph_objects as go
 
-# Import dalla strategia
 from strategy import (
     generate_signal,
     swing_levels,
@@ -12,18 +11,51 @@ from strategy import (
 )
 
 # ============================
-# CONFIGURAZIONE STREAMLIT
+# CONFIGURAZIONE UI
 # ============================
 
-st.set_page_config(page_title="XAUUSD Swing Signals", layout="wide")
-st.title("📈 XAUUSD Swing Trading Signals (ICT: Breakout + OTE + FVG + Trend H4)")
+st.set_page_config(
+    page_title="XAUUSD ICT Dashboard",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Tema scuro personalizzato
+st.markdown("""
+    <style>
+        .main { background-color: #0E1117; }
+        .stApp { background-color: #0E1117; }
+        h1, h2, h3, h4, h5, h6, p, div, span {
+            color: #E0E0E0 !important;
+        }
+        .metric-card {
+            padding: 18px;
+            border-radius: 10px;
+            background-color: #161A23;
+            border: 1px solid #2A2F3A;
+            margin-bottom: 10px;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 # ============================
-# INPUT UTENTE
+# SIDEBAR
 # ============================
 
-equity = st.number_input("Equity (USD)", value=10000)
-risk_pct = st.number_input("Rischio per trade (%)", value=1)
+st.sidebar.title("⚙️ Parametri Strategia")
+
+equity = st.sidebar.number_input("Equity (USD)", value=10000)
+risk_pct = st.sidebar.number_input("Rischio per trade (%)", value=1)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("**Powered by ICT Concepts**")
+
+# ============================
+# TITOLO
+# ============================
+
+st.markdown("<h1 style='text-align:center;'>📈 XAUUSD ICT Trading Dashboard</h1>", unsafe_allow_html=True)
+st.markdown("<hr>", unsafe_allow_html=True)
 
 # ============================
 # API TWELVEDATA
@@ -32,10 +64,7 @@ risk_pct = st.number_input("Rischio per trade (%)", value=1)
 API_KEY = "b8f12bd961754eb6a3d999eb41936afd"
 SYMBOL = "XAU/USD"
 
-# ============================
-# DATI H1
-# ============================
-
+# H1 DATA
 url_h1 = (
     f"https://api.twelvedata.com/time_series?"
     f"symbol={SYMBOL}&interval=1h&outputsize=300&apikey={API_KEY}"
@@ -52,10 +81,7 @@ df = df.rename(columns={"datetime": "time"})
 df = df.astype({"open": float, "high": float, "low": float, "close": float})
 df = df.sort_values("time")
 
-# ============================
-# DATI H4 PER TREND FILTER
-# ============================
-
+# H4 DATA
 url_h4 = (
     f"https://api.twelvedata.com/time_series?"
     f"symbol={SYMBOL}&interval=4h&outputsize=300&apikey={API_KEY}"
@@ -84,29 +110,39 @@ elif last_h4["ma50"] < last_h4["ma200"]:
 else:
     trend_h4 = "NEUTRAL"
 
-st.markdown(f"### 📌 Trend H4: **{trend_h4}**")
+# ============================
+# SEZIONE METRICHE
+# ============================
 
-# ============================
-# CALCOLO SEGNALE H1
-# ============================
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
+    st.subheader("📊 Trend H4")
+    color = "green" if trend_h4 == "BULL" else "red" if trend_h4 == "BEAR" else "gray"
+    st.markdown(f"<h2 style='color:{color};'>{trend_h4}</h2>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 signal = generate_signal(df, equity, risk_pct)
 
+with col2:
+    st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
+    st.subheader("🎯 Segnale")
+    sig_color = "green" if signal["signal"] == "BUY" else "red" if signal["signal"] == "SELL" else "gray"
+    st.markdown(f"<h2 style='color:{sig_color};'>{signal['signal']}</h2>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with col3:
+    st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
+    st.subheader("💰 Lotti")
+    lots = signal.get("lot_size", 0)
+    st.markdown(f"<h2>{lots:.2f}</h2>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("<hr>", unsafe_allow_html=True)
+
 # ============================
-# FILTRO TREND H4
-# ============================
-
-if signal["signal"] == "BUY" and trend_h4 != "BULL":
-    signal = {"signal": "NO TRADE", "reason": "Trend H4 non rialzista"}
-
-if signal["signal"] == "SELL" and trend_h4 != "BEAR":
-    signal = {"signal": "NO TRADE", "reason": "Trend H4 non ribassista"}
-
-st.subheader("Segnale attuale")
-st.write(signal)
-
-# ============================
-# SUPPORTO / RESISTENZA
+# SUPPORTO / RESISTENZA / OTE / FVG
 # ============================
 
 df_sw = swing_levels(df.copy(), lookback=10)
@@ -115,10 +151,6 @@ ref = df_sw.iloc[-2]
 resistenza = ref["swing_high"]
 supporto = ref["swing_low"]
 
-# ============================
-# ZONA OTE
-# ============================
-
 impulse_high = df.iloc[-2]["high"]
 impulse_low = df.iloc[-2]["low"]
 fib = fib_levels(impulse_high, impulse_low)
@@ -126,14 +158,10 @@ fib = fib_levels(impulse_high, impulse_low)
 ote_low = fib["0.5"]
 ote_high = fib["0.618"]
 
-# ============================
-# FVG
-# ============================
-
 fvgs = detect_fvg(df)
 
 # ============================
-# GRAFICO COMPLETO
+# GRAFICO PROFESSIONALE
 # ============================
 
 fig = go.Figure()
@@ -148,23 +176,9 @@ fig.add_trace(go.Candlestick(
     name="XAUUSD H1"
 ))
 
-# Resistenza
-fig.add_trace(go.Scatter(
-    x=[df["time"].iloc[0], df["time"].iloc[-1]],
-    y=[resistenza, resistenza],
-    mode="lines",
-    line=dict(color="red", width=2, dash="dash"),
-    name="Resistenza"
-))
-
-# Supporto
-fig.add_trace(go.Scatter(
-    x=[df["time"].iloc[0], df["time"].iloc[-1]],
-    y=[supporto, supporto],
-    mode="lines",
-    line=dict(color="green", width=2, dash="dash"),
-    name="Supporto"
-))
+# Supporto / Resistenza
+fig.add_hline(y=resistenza, line_color="red", line_dash="dash", opacity=0.6)
+fig.add_hline(y=supporto, line_color="green", line_dash="dash", opacity=0.6)
 
 # Zona OTE
 fig.add_shape(
@@ -189,51 +203,42 @@ for fvg in fvgs:
         line=dict(width=0),
     )
 
-# ============================
-# ENTRY / SL / TP (pallini)
-# ============================
-
+# Entry / SL / TP
 if signal["signal"] in ["BUY", "SELL"]:
     entry = signal["entry"]
     sl = signal["sl"]
     tp = signal["tp"]
 
-    # Entry = pallino nero
     fig.add_trace(go.Scatter(
         x=[df["time"].iloc[-1]],
         y=[entry],
         mode="markers",
-        marker=dict(color="black", size=12),
+        marker=dict(color="black", size=14),
         name="Entry"
     ))
 
-    # SL = pallino rosso
     fig.add_trace(go.Scatter(
         x=[df["time"].iloc[-1]],
         y=[sl],
         mode="markers",
-        marker=dict(color="red", size=12),
+        marker=dict(color="red", size=14),
         name="Stop Loss"
     ))
 
-    # TP = pallino verde
     fig.add_trace(go.Scatter(
         x=[df["time"].iloc[-1]],
         y=[tp],
         mode="markers",
-        marker=dict(color="green", size=12),
+        marker=dict(color="green", size=14),
         name="Take Profit"
     ))
 
 fig.update_layout(
-    height=750,
+    height=800,
+    template="plotly_dark",
     xaxis_rangeslider_visible=False,
-    title="XAUUSD - ICT Strategy (Breakout + OTE + FVG + Trend H4)"
+    title="📉 XAUUSD - ICT Market Structure"
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
-# Info extra
-st.markdown(f"**Resistenza:** {resistenza:.2f}")
-st.markdown(f"**Supporto:** {supporto:.2f}")
-st.markdown(f"**OTE 0.5–0.618:** {ote_low:.2f} → {ote_high:.2f}")
