@@ -90,6 +90,11 @@ with st.sidebar:
     st.markdown("<div class='sidebar-card'>", unsafe_allow_html=True)
     st.markdown("<div class='sidebar-title'>⚙️ Parametri Strategia</div>", unsafe_allow_html=True)
 
+    strategy_mode = st.selectbox(
+        "Modalità strategia",
+        ["Swing Trading ICT", "Scalping ICT"]
+    )
+
     equity = st.number_input("Equity (USD)", value=10000)
     risk_pct = st.number_input("Rischio per trade (%)", value=1)
 
@@ -98,7 +103,7 @@ with st.sidebar:
     st.markdown("<div class='sidebar-card'>", unsafe_allow_html=True)
     st.markdown("<div class='sidebar-title'>📘 Info Strategia</div>", unsafe_allow_html=True)
     st.markdown("<p class='sidebar-label'>Metodo:</p>", unsafe_allow_html=True)
-    st.markdown("<p class='sidebar-value'>ICT Breakout + OTE + FVG</p>", unsafe_allow_html=True)
+    st.markdown("<p class='sidebar-value'>ICT Breakout / OTE / FVG</p>", unsafe_allow_html=True)
     st.markdown("<p class='sidebar-label'>Timeframe:</p>", unsafe_allow_html=True)
     st.markdown("<p class='sidebar-value'>H1 + H4 Trend Filter</p>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
@@ -181,7 +186,7 @@ with col1:
     st.markdown(f"<h2 style='color:{color};'>{trend_h4}</h2>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-signal = generate_signal(df, equity, risk_pct)
+signal = generate_signal(df, equity, risk_pct, strategy_mode)
 
 with col2:
     st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
