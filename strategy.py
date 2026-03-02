@@ -96,7 +96,6 @@ def detect_fvg(df):
 
     for i in range(2, len(df)):
         c1 = df.iloc[i-2]
-        c2 = df.iloc[i-1]
         c3 = df.iloc[i]
 
         # FVG rialzista
@@ -119,6 +118,7 @@ def detect_fvg(df):
 
     return fvg_list
 
+
 def fvg_filter(df, breakout_type):
     fvgs = detect_fvg(df)
     last_close = df.iloc[-1]["close"]
@@ -135,14 +135,19 @@ def fvg_filter(df, breakout_type):
     return False
 
 # ============================
-# POSITION SIZE
+# POSITION SIZE (XAUUSD)
 # ============================
 
 def position_size(equity, risk_pct, entry, sl):
     risk_amount = equity * (risk_pct / 100)
-    risk_per_unit = abs(entry - sl)
-    size = risk_amount / risk_per_unit
-    return size, risk_amount
+
+    pip_value = 0.01  # XAUUSD: 1 pip = 0.01
+    distance_pips = abs(entry - sl) / pip_value
+
+    # XAUUSD: 1 lotto = 1 USD per pip
+    lot_size = risk_amount / distance_pips
+
+    return lot_size, risk_amount
 
 # ============================
 # GENERAZIONE SEGNALE COMPLETO ICT
@@ -183,14 +188,14 @@ def generate_signal(df, equity=10000, risk_pct=1):
         fib = fib_levels(prev["high"], prev["low"])
         tp = fib["1.618"]
 
-        size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
+        lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
 
         return {
             "signal": "BUY",
             "entry": last["close"],
             "sl": sl,
             "tp": tp,
-            "size": size,
+            "lot_size": lot_size,
             "risk_usd": risk_amount
         }
 
@@ -203,14 +208,14 @@ def generate_signal(df, equity=10000, risk_pct=1):
         fib = fib_levels(prev["high"], prev["low"])
         tp = fib["1.618"]
 
-        size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
+        lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
 
         return {
             "signal": "SELL",
             "entry": last["close"],
             "sl": sl,
             "tp": tp,
-            "size": size,
+            "lot_size": lot_size,
             "risk_usd": risk_amount
         }
 
