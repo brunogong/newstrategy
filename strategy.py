@@ -1,244 +1,205 @@
-import streamlit as st
 import pandas as pd
-import requests
-import plotly.graph_objects as go
-
-from strategy import (
-    generate_signal,
-    swing_levels,
-    fib_levels,
-    detect_fvg
-)
+import numpy as np
 
 # ============================
-# CONFIGURAZIONE UI
+# SWING LEVELS
 # ============================
 
-st.set_page_config(
-    page_title="XAUUSD ICT Dashboard",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+def swing_levels(df, lookback=10):
+    df["swing_high"] = df["high"].rolling(lookback).max()
+    df["swing_low"] = df["low"].rolling(lookback).min()
+    return df
 
-# Tema scuro personalizzato
-st.markdown("""
-    <style>
-        .main { background-color: #0E1117; }
-        .stApp { background-color: #0E1117; }
-        h1, h2, h3, h4, h5, h6, p, div, span {
-            color: #E0E0E0 !important;
+# ============================
+# FIBONACCI LEVELS
+# ============================
+
+def fib_levels(high, low):
+    return {
+        "0.5": low + (high - low) * 0.5,
+        "0.618": low + (high - low) * 0.618,
+        "1.272": high + (high - low) * 1.272,
+        "1.618": high + (high - low) * 1.618,
+    }
+
+# ============================
+# MACD
+# ============================
+
+def macd(df, fast=12, slow=26, signal=9):
+    df["ema_fast"] = df["close"].ewm(span=fast).mean()
+    df["ema_slow"] = df["close"].ewm(span=slow).mean()
+    df["macd"] = df["ema_fast"] - df["ema_slow"]
+    df["signal"] = df["macd"].ewm(span=signal).mean()
+    return df
+
+# ============================
+# BREAKOUT
+# ============================
+
+def detect_breakout(df):
+    last = df.iloc[-1]
+    prev = df.iloc[-2]
+
+    if last["close"] > prev["swing_high"]:
+        return "BREAKOUT_UP"
+
+    if last["close"] < prev["swing_low"]:
+        return "BREAKOUT_DOWN"
+
+    return None
+
+# ============================
+# PULLBACK OTE
+# ============================
+
+def detect_pullback(df, breakout_type):
+    last = df.iloc[-1]
+    impulse_high = df.iloc[-2]["high"]
+    impulse_low = df.iloc[-2]["low"]
+    fib = fib_levels(impulse_high, impulse_low)
+
+    if breakout_type == "BREAKOUT_UP":
+        if fib["0.5"] <= last["close"] <= fib["0.618"]:
+            return "PULLBACK_OK"
+
+    if breakout_type == "BREAKOUT_DOWN":
+        if fib["0.618"] <= last["close"] <= fib["0.5"]:
+            return "PULLBACK_OK"
+
+    return None
+
+# ============================
+# MOMENTUM (MACD)
+# ============================
+
+def detect_momentum(df, breakout_type):
+    last = df.iloc[-1]
+    prev = df.iloc[-2]
+
+    if breakout_type == "BREAKOUT_UP":
+        if prev["macd"] < prev["signal"] and last["macd"] > last["signal"]:
+            return "MACD_BULL"
+
+    if breakout_type == "BREAKOUT_DOWN":
+        if prev["macd"] > prev["signal"] and last["macd"] < last["signal"]:
+            return "MACD_BEAR"
+
+    return None
+
+# ============================
+# FVG (FAIR VALUE GAPS)
+# ============================
+
+def detect_fvg(df):
+    fvg_list = []
+
+    for i in range(2, len(df)):
+        c1 = df.iloc[i-2]
+        c3 = df.iloc[i]
+
+        # FVG rialzista
+        if c3["low"] > c1["high"]:
+            fvg_list.append({
+                "type": "BULL",
+                "start": c1["high"],
+                "end": c3["low"],
+                "index": i
+            })
+
+        # FVG ribassista
+        if c3["high"] < c1["low"]:
+            fvg_list.append({
+                "type": "BEAR",
+                "start": c1["low"],
+                "end": c3["high"],
+                "index": i
+            })
+
+    return fvg_list
+
+
+def fvg_filter(df, breakout_type):
+    fvgs = detect_fvg(df)
+    last_close = df.iloc[-1]["close"]
+
+    for fvg in fvgs:
+        if breakout_type == "BREAKOUT_UP" and fvg["type"] == "BULL":
+            if fvg["start"] <= last_close <= fvg["end"]:
+                return True
+
+        if breakout_type == "BREAKOUT_DOWN" and fvg["type"] == "BEAR":
+            if fvg["end"] <= last_close <= fvg["start"]:
+                return True
+
+    return False
+
+# ============================
+# POSITION SIZE (XAUUSD)
+# ============================
+
+def position_size(equity, risk_pct, entry, sl):
+    risk_amount = equity * (risk_pct / 100)
+
+    pip_value = 0.01  # XAUUSD: 1 pip = 0.01
+    distance_pips = abs(entry - sl) / pip_value
+
+    lot_size = risk_amount / distance_pips  # 1 lotto = 1 USD/pip
+
+    return lot_size, risk_amount
+
+# ============================
+# GENERAZIONE SEGNALE COMPLETO ICT
+# ============================
+
+def generate_signal(df, equity=10000, risk_pct=1):
+    df = swing_levels(df)
+    df = macd(df)
+
+    breakout = detect_breakout(df)
+    if breakout is None:
+        return {"signal": "NO TRADE", "reason": "Nessun breakout rilevato"}
+
+    pullback = detect_pullback(df, breakout)
+    if pullback is None:
+        return {"signal": "WAIT", "reason": "Breakout ma nessun pullback OTE"}
+
+    momentum = detect_momentum(df, breakout)
+    if momentum is None:
+        return {"signal": "WAIT", "reason": "Pullback ok ma MACD non conferma"}
+
+    if not fvg_filter(df, breakout):
+        return {"signal": "WAIT", "reason": "Pullback non dentro un FVG"}
+
+    last = df.iloc[-1]
+    prev = df.iloc[-2]
+
+    if breakout == "BREAKOUT_UP":
+        sl = prev["swing_low"]
+        fib = fib_levels(prev["high"], prev["low"])
+        tp = fib["1.618"]
+        lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
+
+        return {
+            "signal": "BUY",
+            "entry": last["close"],
+            "sl": sl,
+            "tp": tp,
+            "lot_size": lot_size,
+            "risk_usd": risk_amount
         }
-        .metric-card {
-            padding: 18px;
-            border-radius: 10px;
-            background-color: #161A23;
-            border: 1px solid #2A2F3A;
-            margin-bottom: 10px;
+
+    if breakout == "BREAKOUT_DOWN":
+        sl = prev["swing_high"]
+        fib = fib_levels(prev["high"], prev["low"])
+        tp = fib["1.618"]
+        lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
+
+        return {
+            "signal": "SELL",
+            "entry": last["close"],
+            "sl": sl,
+            "tp": tp,
+            "lot_size": lot_size,
+            "risk_usd": risk_amount
         }
-    </style>
-""", unsafe_allow_html=True)
-
-# ============================
-# SIDEBAR
-# ============================
-
-st.sidebar.title("⚙️ Parametri Strategia")
-
-equity = st.sidebar.number_input("Equity (USD)", value=10000)
-risk_pct = st.sidebar.number_input("Rischio per trade (%)", value=1)
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("**Powered by ICT Concepts**")
-
-# ============================
-# TITOLO
-# ============================
-
-st.markdown("<h1 style='text-align:center;'>📈 XAUUSD ICT Trading Dashboard</h1>", unsafe_allow_html=True)
-st.markdown("<hr>", unsafe_allow_html=True)
-
-# ============================
-# API TWELVEDATA
-# ============================
-
-API_KEY = "b8f12bd961754eb6a3d999eb41936afd"
-SYMBOL = "XAU/USD"
-
-# H1 DATA
-url_h1 = (
-    f"https://api.twelvedata.com/time_series?"
-    f"symbol={SYMBOL}&interval=1h&outputsize=300&apikey={API_KEY}"
-)
-
-response_h1 = requests.get(url_h1).json()
-
-if "values" not in response_h1:
-    st.error("Errore nel recupero dati H1 da TwelveData.")
-    st.stop()
-
-df = pd.DataFrame(response_h1["values"])
-df = df.rename(columns={"datetime": "time"})
-df = df.astype({"open": float, "high": float, "low": float, "close": float})
-df = df.sort_values("time")
-
-# H4 DATA
-url_h4 = (
-    f"https://api.twelvedata.com/time_series?"
-    f"symbol={SYMBOL}&interval=4h&outputsize=300&apikey={API_KEY}"
-)
-
-response_h4 = requests.get(url_h4).json()
-
-if "values" not in response_h4:
-    st.error("Errore nel recupero dati H4 da TwelveData.")
-    st.stop()
-
-df_h4 = pd.DataFrame(response_h4["values"])
-df_h4 = df_h4.rename(columns={"datetime": "time"})
-df_h4 = df_h4.astype({"open": float, "high": float, "low": float, "close": float})
-df_h4 = df_h4.sort_values("time")
-
-df_h4["ma50"] = df_h4["close"].rolling(50).mean()
-df_h4["ma200"] = df_h4["close"].rolling(200).mean()
-
-last_h4 = df_h4.iloc[-1]
-
-if last_h4["ma50"] > last_h4["ma200"]:
-    trend_h4 = "BULL"
-elif last_h4["ma50"] < last_h4["ma200"]:
-    trend_h4 = "BEAR"
-else:
-    trend_h4 = "NEUTRAL"
-
-# ============================
-# SEZIONE METRICHE
-# ============================
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
-    st.subheader("📊 Trend H4")
-    color = "green" if trend_h4 == "BULL" else "red" if trend_h4 == "BEAR" else "gray"
-    st.markdown(f"<h2 style='color:{color};'>{trend_h4}</h2>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-signal = generate_signal(df, equity, risk_pct)
-
-with col2:
-    st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
-    st.subheader("🎯 Segnale")
-    sig_color = "green" if signal["signal"] == "BUY" else "red" if signal["signal"] == "SELL" else "gray"
-    st.markdown(f"<h2 style='color:{sig_color};'>{signal['signal']}</h2>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with col3:
-    st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
-    st.subheader("💰 Lotti")
-    lots = signal.get("lot_size", 0)
-    st.markdown(f"<h2>{lots:.2f}</h2>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("<hr>", unsafe_allow_html=True)
-
-# ============================
-# SUPPORTO / RESISTENZA / OTE / FVG
-# ============================
-
-df_sw = swing_levels(df.copy(), lookback=10)
-ref = df_sw.iloc[-2]
-
-resistenza = ref["swing_high"]
-supporto = ref["swing_low"]
-
-impulse_high = df.iloc[-2]["high"]
-impulse_low = df.iloc[-2]["low"]
-fib = fib_levels(impulse_high, impulse_low)
-
-ote_low = fib["0.5"]
-ote_high = fib["0.618"]
-
-fvgs = detect_fvg(df)
-
-# ============================
-# GRAFICO PROFESSIONALE
-# ============================
-
-fig = go.Figure()
-
-# Candele
-fig.add_trace(go.Candlestick(
-    x=df["time"],
-    open=df["open"],
-    high=df["high"],
-    low=df["low"],
-    close=df["close"],
-    name="XAUUSD H1"
-))
-
-# Supporto / Resistenza
-fig.add_hline(y=resistenza, line_color="red", line_dash="dash", opacity=0.6)
-fig.add_hline(y=supporto, line_color="green", line_dash="dash", opacity=0.6)
-
-# Zona OTE
-fig.add_shape(
-    type="rect",
-    x0=df["time"].iloc[-80],
-    x1=df["time"].iloc[-1],
-    y0=ote_low,
-    y1=ote_high,
-    fillcolor="rgba(255, 215, 0, 0.15)",
-    line=dict(color="gold", width=1),
-)
-
-# FVG
-for fvg in fvgs:
-    fig.add_shape(
-        type="rect",
-        x0=df["time"].iloc[fvg["index"]-2],
-        x1=df["time"].iloc[fvg["index"]],
-        y0=fvg["start"],
-        y1=fvg["end"],
-        fillcolor="rgba(0,150,255,0.15)" if fvg["type"] == "BULL" else "rgba(255,0,0,0.15)",
-        line=dict(width=0),
-    )
-
-# Entry / SL / TP
-if signal["signal"] in ["BUY", "SELL"]:
-    entry = signal["entry"]
-    sl = signal["sl"]
-    tp = signal["tp"]
-
-    fig.add_trace(go.Scatter(
-        x=[df["time"].iloc[-1]],
-        y=[entry],
-        mode="markers",
-        marker=dict(color="black", size=14),
-        name="Entry"
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=[df["time"].iloc[-1]],
-        y=[sl],
-        mode="markers",
-        marker=dict(color="red", size=14),
-        name="Stop Loss"
-    ))
-
-    fig.add_trace(go.Scatter(
-        x=[df["time"].iloc[-1]],
-        y=[tp],
-        mode="markers",
-        marker=dict(color="green", size=14),
-        name="Take Profit"
-    ))
-
-fig.update_layout(
-    height=800,
-    template="plotly_dark",
-    xaxis_rangeslider_visible=False,
-    title="📉 XAUUSD - ICT Market Structure"
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
