@@ -20,14 +20,58 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Tema scuro personalizzato
+# Tema scuro + sidebar chiara
 st.markdown("""
     <style>
         .main { background-color: #0E1117; }
         .stApp { background-color: #0E1117; }
+
+        /* Testo generale */
         h1, h2, h3, h4, h5, h6, p, div, span {
             color: #E0E0E0 !important;
         }
+
+        /* Sidebar chiara */
+        section[data-testid="stSidebar"] {
+            background-color: #F5F5F5 !important;
+            border-right: 2px solid #D0D0D0;
+        }
+
+        /* Sidebar testo nero */
+        section[data-testid="stSidebar"] * {
+            color: black !important;
+        }
+
+        /* Sidebar cards */
+        .sidebar-card {
+            background-color: white;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid #D9D9D9;
+            margin-bottom: 18px;
+            box-shadow: 0px 2px 4px rgba(0,0,0,0.08);
+        }
+
+        .sidebar-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: black !important;
+            margin-bottom: 10px;
+        }
+
+        .sidebar-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333 !important;
+        }
+
+        .sidebar-value {
+            font-size: 16px;
+            font-weight: 700;
+            color: #111 !important;
+        }
+
+        /* Metric cards */
         .metric-card {
             padding: 18px;
             border-radius: 10px;
@@ -39,16 +83,30 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================
-# SIDEBAR
+# SIDEBAR PROFESSIONALE
 # ============================
 
-st.sidebar.title("⚙️ Parametri Strategia")
+with st.sidebar:
+    st.markdown("<div class='sidebar-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-title'>⚙️ Parametri Strategia</div>", unsafe_allow_html=True)
 
-equity = st.sidebar.number_input("Equity (USD)", value=10000)
-risk_pct = st.sidebar.number_input("Rischio per trade (%)", value=1)
+    equity = st.number_input("Equity (USD)", value=10000)
+    risk_pct = st.number_input("Rischio per trade (%)", value=1)
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("**Powered by ICT Concepts**")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<div class='sidebar-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-title'>📘 Info Strategia</div>", unsafe_allow_html=True)
+    st.markdown("<p class='sidebar-label'>Metodo:</p>", unsafe_allow_html=True)
+    st.markdown("<p class='sidebar-value'>ICT Breakout + OTE + FVG</p>", unsafe_allow_html=True)
+    st.markdown("<p class='sidebar-label'>Timeframe:</p>", unsafe_allow_html=True)
+    st.markdown("<p class='sidebar-value'>H1 + H4 Trend Filter</p>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<div class='sidebar-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-title'>💡 Powered By</div>", unsafe_allow_html=True)
+    st.markdown("<p class='sidebar-value'>REGGAE FX Engine</p>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================
 # TITOLO
@@ -111,7 +169,7 @@ else:
     trend_h4 = "NEUTRAL"
 
 # ============================
-# SEZIONE METRICHE
+# METRICHE
 # ============================
 
 col1, col2, col3 = st.columns(3)
@@ -241,4 +299,3 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
-
