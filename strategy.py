@@ -98,7 +98,6 @@ def detect_fvg(df):
         c1 = df.iloc[i-2]
         c3 = df.iloc[i]
 
-        # FVG rialzista
         if c3["low"] > c1["high"]:
             fvg_list.append({
                 "type": "BULL",
@@ -107,7 +106,6 @@ def detect_fvg(df):
                 "index": i
             })
 
-        # FVG ribassista
         if c3["high"] < c1["low"]:
             fvg_list.append({
                 "type": "BEAR",
@@ -140,66 +138,110 @@ def fvg_filter(df, breakout_type):
 
 def position_size(equity, risk_pct, entry, sl):
     risk_amount = equity * (risk_pct / 100)
-
-    pip_value = 0.01  # XAUUSD: 1 pip = 0.01
+    pip_value = 0.01
     distance_pips = abs(entry - sl) / pip_value
-
-    lot_size = risk_amount / distance_pips  # 1 lotto = 1 USD/pip
-
+    lot_size = risk_amount / distance_pips
     return lot_size, risk_amount
 
 # ============================
-# GENERAZIONE SEGNALE COMPLETO ICT
+# STRATEGIA COMPLETA
 # ============================
 
-def generate_signal(df, equity=10000, risk_pct=1):
+def generate_signal(df, equity=10000, risk_pct=1, mode="Swing Trading ICT"):
     df = swing_levels(df)
     df = macd(df)
 
-    breakout = detect_breakout(df)
-    if breakout is None:
-        return {"signal": "NO TRADE", "reason": "Nessun breakout rilevato"}
+    # ============================
+    # SWING TRADING ICT
+    # ============================
 
-    pullback = detect_pullback(df, breakout)
-    if pullback is None:
-        return {"signal": "WAIT", "reason": "Breakout ma nessun pullback OTE"}
+    if mode == "Swing Trading ICT":
 
-    momentum = detect_momentum(df, breakout)
-    if momentum is None:
-        return {"signal": "WAIT", "reason": "Pullback ok ma MACD non conferma"}
+        breakout = detect_breakout(df)
+        if breakout is None:
+            return {"signal": "NO TRADE", "reason": "Nessun breakout"}
 
-    if not fvg_filter(df, breakout):
-        return {"signal": "WAIT", "reason": "Pullback non dentro un FVG"}
+        pullback = detect_pullback(df, breakout)
+        if pullback is None:
+            return {"signal": "WAIT", "reason": "Nessun pullback OTE"}
 
-    last = df.iloc[-1]
-    prev = df.iloc[-2]
+        momentum = detect_momentum(df, breakout)
+        if momentum is None:
+            return {"signal": "WAIT", "reason": "MACD non conferma"}
 
-    if breakout == "BREAKOUT_UP":
-        sl = prev["swing_low"]
-        fib = fib_levels(prev["high"], prev["low"])
-        tp = fib["1.618"]
-        lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
+        if not fvg_filter(df, breakout):
+            return {"signal": "WAIT", "reason": "Pullback non dentro FVG"}
 
-        return {
-            "signal": "BUY",
-            "entry": last["close"],
-            "sl": sl,
-            "tp": tp,
-            "lot_size": lot_size,
-            "risk_usd": risk_amount
-        }
+        last = df.iloc[-1]
+        prev = df.iloc[-2]
 
-    if breakout == "BREAKOUT_DOWN":
-        sl = prev["swing_high"]
-        fib = fib_levels(prev["high"], prev["low"])
-        tp = fib["1.618"]
-        lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
+        if breakout == "BREAKOUT_UP":
+            sl = prev["swing_low"]
+            fib = fib_levels(prev["high"], prev["low"])
+            tp = fib["1.618"]
+            lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
 
-        return {
-            "signal": "SELL",
-            "entry": last["close"],
-            "sl": sl,
-            "tp": tp,
-            "lot_size": lot_size,
-            "risk_usd": risk_amount
-        }
+            return {
+                "signal": "BUY",
+                "entry": last["close"],
+                "sl": sl,
+                "tp": tp,
+                "lot_size": lot_size,
+                "risk_usd": risk_amount
+            }
+
+        if breakout == "BREAKOUT_DOWN":
+            sl = prev["swing_high"]
+            fib = fib_levels(prev["high"], prev["low"])
+            tp = fib["1.618"]
+            lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
+
+            return {
+                "signal": "SELL",
+                "entry": last["close"],
+                "sl": sl,
+                "tp": tp,
+                "lot_size": lot_size,
+                "risk_usd": risk_amount
+            }
+
+    # ============================
+    # SCALPING ICT
+    # ============================
+
+    if mode == "Scalping ICT":
+
+        fvgs = detect_fvg(df)
+        last = df.iloc[-1]
+
+        for fvg in fvgs[::-1]:
+
+            if fvg["type"] == "BULL" and fvg["start"] <= last["close"] <= fvg["end"]:
+                sl = fvg["start"]
+                tp = last["close"] + (last["close"] - sl) * 1.5
+                lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
+
+                return {
+                    "signal": "BUY",
+                    "entry": last["close"],
+                    "sl": sl,
+                    "tp": tp,
+                    "lot_size": lot_size,
+                    "risk_usd": risk_amount
+                }
+
+            if fvg["type"] == "BEAR" and fvg["end"] <= last["close"] <= fvg["start"]:
+                sl = fvg["start"]
+                tp = last["close"] - (sl - last["close"]) * 1.5
+                lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
+
+                return {
+                    "signal": "SELL",
+                    "entry": last["close"],
+                    "sl": sl,
+                    "tp": tp,
+                    "lot_size": lot_size,
+                    "risk_usd": risk_amount
+                }
+
+        return {"signal": "NO TRADE", "reason": "Nessun FVG valido per scalping"}
