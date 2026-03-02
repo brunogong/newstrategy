@@ -4,14 +4,19 @@ import requests
 import plotly.graph_objects as go
 
 # Import dalla strategia
-from strategy import generate_signal, swing_levels, fib_levels
+from strategy import (
+    generate_signal,
+    swing_levels,
+    fib_levels,
+    detect_fvg
+)
 
 # ============================
 # CONFIGURAZIONE STREAMLIT
 # ============================
 
 st.set_page_config(page_title="XAUUSD Swing Signals", layout="wide")
-st.title("📈 XAUUSD Swing Trading Signals (Breakout + OTE + MACD + Trend H4)")
+st.title("📈 XAUUSD Swing Trading Signals (ICT: Breakout + OTE + FVG + Trend H4)")
 
 # ============================
 # INPUT UTENTE
@@ -67,7 +72,6 @@ df_h4 = df_h4.rename(columns={"datetime": "time"})
 df_h4 = df_h4.astype({"open": float, "high": float, "low": float, "close": float})
 df_h4 = df_h4.sort_values("time")
 
-# Trend H4 = MA50 vs MA200
 df_h4["ma50"] = df_h4["close"].rolling(50).mean()
 df_h4["ma200"] = df_h4["close"].rolling(200).mean()
 
@@ -123,6 +127,12 @@ ote_low = fib["0.5"]
 ote_high = fib["0.618"]
 
 # ============================
+# FVG
+# ============================
+
+fvgs = detect_fvg(df)
+
+# ============================
 # GRAFICO COMPLETO
 # ============================
 
@@ -144,7 +154,7 @@ fig.add_trace(go.Scatter(
     y=[resistenza, resistenza],
     mode="lines",
     line=dict(color="red", width=2, dash="dash"),
-    name="Resistenza (swing high)"
+    name="Resistenza"
 ))
 
 # Supporto
@@ -153,7 +163,7 @@ fig.add_trace(go.Scatter(
     y=[supporto, supporto],
     mode="lines",
     line=dict(color="green", width=2, dash="dash"),
-    name="Supporto (swing low)"
+    name="Supporto"
 ))
 
 # Zona OTE
@@ -165,77 +175,65 @@ fig.add_shape(
     y1=ote_high,
     fillcolor="rgba(255, 215, 0, 0.15)",
     line=dict(color="gold", width=1),
-    name="OTE"
 )
 
-# Evidenziazione breakout
-last = df.iloc[-1]
-prev = df.iloc[-2]
-
-if last["close"] > resistenza:
-    breakout_color = "rgba(0,255,0,0.4)"
-elif last["close"] < supporto:
-    breakout_color = "rgba(255,0,0,0.4)"
-else:
-    breakout_color = None
-
-if breakout_color:
+# FVG
+for fvg in fvgs:
     fig.add_shape(
         type="rect",
-        x0=prev["time"],
-        x1=last["time"],
-        y0=last["low"],
-        y1=last["high"],
-        fillcolor=breakout_color,
+        x0=df["time"].iloc[fvg["index"]-2],
+        x1=df["time"].iloc[fvg["index"]],
+        y0=fvg["start"],
+        y1=fvg["end"],
+        fillcolor="rgba(0,150,255,0.15)" if fvg["type"] == "BULL" else "rgba(255,0,0,0.15)",
         line=dict(width=0),
-        name="Breakout"
     )
 
-# Entry / SL / TP
+# ============================
+# ENTRY / SL / TP (pallini)
+# ============================
+
 if signal["signal"] in ["BUY", "SELL"]:
     entry = signal["entry"]
     sl = signal["sl"]
     tp = signal["tp"]
 
+    # Entry = pallino nero
     fig.add_trace(go.Scatter(
         x=[df["time"].iloc[-1]],
         y=[entry],
-        mode="markers+text",
-        text=["ENTRY"],
-        textposition="top center",
-        marker=dict(color="blue", size=10),
+        mode="markers",
+        marker=dict(color="black", size=12),
         name="Entry"
     ))
 
+    # SL = pallino rosso
     fig.add_trace(go.Scatter(
         x=[df["time"].iloc[-1]],
         y=[sl],
-        mode="markers+text",
-        text=["SL"],
-        textposition="bottom center",
-        marker=dict(color="red", size=10),
+        mode="markers",
+        marker=dict(color="red", size=12),
         name="Stop Loss"
     ))
 
+    # TP = pallino verde
     fig.add_trace(go.Scatter(
         x=[df["time"].iloc[-1]],
         y=[tp],
-        mode="markers+text",
-        text=["TP"],
-        textposition="top center",
-        marker=dict(color="green", size=10),
+        mode="markers",
+        marker=dict(color="green", size=12),
         name="Take Profit"
     ))
 
 fig.update_layout(
     height=750,
     xaxis_rangeslider_visible=False,
-    title="XAUUSD - Strategia Breakout + OTE + MACD + Trend H4"
+    title="XAUUSD - ICT Strategy (Breakout + OTE + FVG + Trend H4)"
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
 # Info extra
-st.markdown(f"**Resistenza (swing high):** {resistenza:.2f}")
-st.markdown(f"**Supporto (swing low):** {supporto:.2f}")
+st.markdown(f"**Resistenza:** {resistenza:.2f}")
+st.markdown(f"**Supporto:** {supporto:.2f}")
 st.markdown(f"**OTE 0.5–0.618:** {ote_low:.2f} → {ote_high:.2f}")
