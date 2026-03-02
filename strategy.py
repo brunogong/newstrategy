@@ -140,7 +140,7 @@ def position_size(equity, risk_pct, entry, sl):
     risk_amount = equity * (risk_pct / 100)
     pip_value = 0.01
     distance_pips = abs(entry - sl) / pip_value
-    lot_size = risk_amount / distance_pips
+    lot_size = risk_amount / distance_pips if distance_pips > 0 else 0
     return lot_size, risk_amount
 
 # ============================
@@ -206,19 +206,23 @@ def generate_signal(df, equity=10000, risk_pct=1, mode="Swing Trading ICT"):
             }
 
     # ============================
-    # SCALPING ICT
+    # SCALPING ICT (SL realistico)
     # ============================
 
     if mode == "Scalping ICT":
 
         fvgs = detect_fvg(df)
         last = df.iloc[-1]
+        prev = df.iloc[-2]
 
         for fvg in fvgs[::-1]:
 
+            # BUY SCALPING
             if fvg["type"] == "BULL" and fvg["start"] <= last["close"] <= fvg["end"]:
-                sl = fvg["start"]
+
+                sl = prev["low"] - 0.05   # SL vicino
                 tp = last["close"] + (last["close"] - sl) * 1.5
+
                 lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
 
                 return {
@@ -230,9 +234,12 @@ def generate_signal(df, equity=10000, risk_pct=1, mode="Swing Trading ICT"):
                     "risk_usd": risk_amount
                 }
 
+            # SELL SCALPING
             if fvg["type"] == "BEAR" and fvg["end"] <= last["close"] <= fvg["start"]:
-                sl = fvg["start"]
+
+                sl = prev["high"] + 0.05  # SL vicino
                 tp = last["close"] - (sl - last["close"]) * 1.5
+
                 lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
 
                 return {
