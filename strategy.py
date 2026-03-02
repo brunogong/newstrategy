@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 # ============================
-# SUPPORTI / RESISTENZE
+# SWING LEVELS
 # ============================
 
 def swing_levels(df, lookback=10):
@@ -10,9 +10,8 @@ def swing_levels(df, lookback=10):
     df["swing_low"] = df["low"].rolling(lookback).min()
     return df
 
-
 # ============================
-# FIBONACCI
+# FIBONACCI LEVELS
 # ============================
 
 def fib_levels(high, low):
@@ -22,7 +21,6 @@ def fib_levels(high, low):
         "1.272": high + (high - low) * 1.272,
         "1.618": high + (high - low) * 1.618,
     }
-
 
 # ============================
 # MACD
@@ -34,7 +32,6 @@ def macd(df, fast=12, slow=26, signal=9):
     df["macd"] = df["ema_fast"] - df["ema_slow"]
     df["signal"] = df["macd"].ewm(span=signal).mean()
     return df
-
 
 # ============================
 # BREAKOUT
@@ -52,9 +49,8 @@ def detect_breakout(df):
 
     return None
 
-
 # ============================
-# PULLBACK OTE (0.5–0.618)
+# PULLBACK OTE
 # ============================
 
 def detect_pullback(df, breakout_type):
@@ -72,7 +68,6 @@ def detect_pullback(df, breakout_type):
             return "PULLBACK_OK"
 
     return None
-
 
 # ============================
 # MOMENTUM (MACD)
@@ -92,6 +87,52 @@ def detect_momentum(df, breakout_type):
 
     return None
 
+# ============================
+# FVG (FAIR VALUE GAPS)
+# ============================
+
+def detect_fvg(df):
+    fvg_list = []
+
+    for i in range(2, len(df)):
+        c1 = df.iloc[i-2]
+        c2 = df.iloc[i-1]
+        c3 = df.iloc[i]
+
+        # FVG rialzista
+        if c3["low"] > c1["high"]:
+            fvg_list.append({
+                "type": "BULL",
+                "start": c1["high"],
+                "end": c3["low"],
+                "index": i
+            })
+
+        # FVG ribassista
+        if c3["high"] < c1["low"]:
+            fvg_list.append({
+                "type": "BEAR",
+                "start": c1["low"],
+                "end": c3["high"],
+                "index": i
+            })
+
+    return fvg_list
+
+def fvg_filter(df, breakout_type):
+    fvgs = detect_fvg(df)
+    last_close = df.iloc[-1]["close"]
+
+    for fvg in fvgs:
+        if breakout_type == "BREAKOUT_UP" and fvg["type"] == "BULL":
+            if fvg["start"] <= last_close <= fvg["end"]:
+                return True
+
+        if breakout_type == "BREAKOUT_DOWN" and fvg["type"] == "BEAR":
+            if fvg["end"] <= last_close <= fvg["start"]:
+                return True
+
+    return False
 
 # ============================
 # POSITION SIZE
@@ -103,26 +144,32 @@ def position_size(equity, risk_pct, entry, sl):
     size = risk_amount / risk_per_unit
     return size, risk_amount
 
-
 # ============================
-# GENERAZIONE SEGNALE COMPLETO
+# GENERAZIONE SEGNALE COMPLETO ICT
 # ============================
 
 def generate_signal(df, equity=10000, risk_pct=1):
     df = swing_levels(df)
     df = macd(df)
 
+    # 1) Breakout
     breakout = detect_breakout(df)
     if breakout is None:
         return {"signal": "NO TRADE", "reason": "Nessun breakout rilevato"}
 
+    # 2) Pullback OTE
     pullback = detect_pullback(df, breakout)
     if pullback is None:
         return {"signal": "WAIT", "reason": "Breakout ma nessun pullback OTE"}
 
+    # 3) Momentum MACD
     momentum = detect_momentum(df, breakout)
     if momentum is None:
         return {"signal": "WAIT", "reason": "Pullback ok ma MACD non conferma"}
+
+    # 4) FVG filter
+    if not fvg_filter(df, breakout):
+        return {"signal": "WAIT", "reason": "Pullback non dentro un FVG"}
 
     last = df.iloc[-1]
     prev = df.iloc[-2]
@@ -130,6 +177,7 @@ def generate_signal(df, equity=10000, risk_pct=1):
     # ============================
     # BUY
     # ============================
+
     if breakout == "BREAKOUT_UP":
         sl = prev["swing_low"]
         fib = fib_levels(prev["high"], prev["low"])
@@ -149,6 +197,7 @@ def generate_signal(df, equity=10000, risk_pct=1):
     # ============================
     # SELL
     # ============================
+
     if breakout == "BREAKOUT_DOWN":
         sl = prev["swing_high"]
         fib = fib_levels(prev["high"], prev["low"])
@@ -164,3 +213,4 @@ def generate_signal(df, equity=10000, risk_pct=1):
             "size": size,
             "risk_usd": risk_amount
         }
+
