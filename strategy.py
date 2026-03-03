@@ -116,21 +116,6 @@ def detect_fvg(df):
 
     return fvg_list
 
-def fvg_filter(df, breakout_type):
-    fvgs = detect_fvg(df)
-    last_close = df.iloc[-1]["close"]
-
-    for fvg in fvgs:
-        if breakout_type == "BREAKOUT_UP" and fvg["type"] == "BULL":
-            if fvg["start"] <= last_close <= fvg["end"]:
-                return True
-
-        if breakout_type == "BREAKOUT_DOWN" and fvg["type"] == "BEAR":
-            if fvg["end"] <= last_close <= fvg["start"]:
-                return True
-
-    return False
-
 # ============================
 # POSITION SIZE (XAUUSD)
 # ============================
@@ -212,7 +197,7 @@ def generate_signal(df, equity=10000, risk_pct=1, mode="Swing Trading ICT", tren
             }
 
     # ============================
-    # SCALPING ICT (SL realistico + filtro trend)
+    # SCALPING ICT MODERATO (solo in favore del trend H4)
     # ============================
 
     if mode == "Scalping ICT":
@@ -233,7 +218,7 @@ def generate_signal(df, equity=10000, risk_pct=1, mode="Swing Trading ICT", tren
             # BUY SCALPING
             if fvg["type"] == "BULL" and fvg["start"] <= last["close"] <= fvg["end"]:
 
-                sl = prev["low"] - 0.20  # SL minimo garantito
+                sl = prev["low"] - 0.20
                 tp = last["close"] + (last["close"] - sl) * 1.5
 
                 lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
@@ -250,7 +235,7 @@ def generate_signal(df, equity=10000, risk_pct=1, mode="Swing Trading ICT", tren
             # SELL SCALPING
             if fvg["type"] == "BEAR" and fvg["end"] <= last["close"] <= fvg["start"]:
 
-                sl = prev["high"] + 0.20  # SL minimo garantito
+                sl = prev["high"] + 0.20
                 tp = last["close"] - (sl - last["close"]) * 1.5
 
                 lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
