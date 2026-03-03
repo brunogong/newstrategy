@@ -26,23 +26,19 @@ st.markdown("""
         .main { background-color: #0E1117; }
         .stApp { background-color: #0E1117; }
 
-        /* Testo generale */
         h1, h2, h3, h4, h5, h6, p, div, span {
             color: #E0E0E0 !important;
         }
 
-        /* Sidebar chiara */
         section[data-testid="stSidebar"] {
             background-color: #F5F5F5 !important;
             border-right: 2px solid #D0D0D0;
         }
 
-        /* Sidebar testo nero */
         section[data-testid="stSidebar"] * {
             color: black !important;
         }
 
-        /* Sidebar cards */
         .sidebar-card {
             background-color: white;
             padding: 15px;
@@ -59,19 +55,6 @@ st.markdown("""
             margin-bottom: 10px;
         }
 
-        .sidebar-label {
-            font-size: 14px;
-            font-weight: 600;
-            color: #333 !important;
-        }
-
-        .sidebar-value {
-            font-size: 16px;
-            font-weight: 700;
-            color: #111 !important;
-        }
-
-        /* Metric cards */
         .metric-card {
             padding: 18px;
             border-radius: 10px;
@@ -83,7 +66,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================
-# SIDEBAR PROFESSIONALE
+# SIDEBAR
 # ============================
 
 with st.sidebar:
@@ -102,15 +85,8 @@ with st.sidebar:
 
     st.markdown("<div class='sidebar-card'>", unsafe_allow_html=True)
     st.markdown("<div class='sidebar-title'>📘 Info Strategia</div>", unsafe_allow_html=True)
-    st.markdown("<p class='sidebar-label'>Metodo:</p>", unsafe_allow_html=True)
-    st.markdown("<p class='sidebar-value'>ICT Breakout / OTE / FVG</p>", unsafe_allow_html=True)
-    st.markdown("<p class='sidebar-label'>Timeframe:</p>", unsafe_allow_html=True)
-    st.markdown("<p class='sidebar-value'>H1 + H4 Trend Filter</p>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("<div class='sidebar-card'>", unsafe_allow_html=True)
-    st.markdown("<div class='sidebar-title'>💡 Powered By</div>", unsafe_allow_html=True)
-    st.markdown("<p class='sidebar-value'>REGGAE FX Engine</p>", unsafe_allow_html=True)
+    st.markdown("Metodo: ICT Breakout / OTE / FVG")
+    st.markdown("Timeframe: H1 + H4 Trend Filter")
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================
@@ -186,7 +162,7 @@ with col1:
     st.markdown(f"<h2 style='color:{color};'>{trend_h4}</h2>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-signal = generate_signal(df, equity, risk_pct, strategy_mode)
+signal = generate_signal(df, equity, risk_pct, strategy_mode, trend_h4)
 
 with col2:
     st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
@@ -229,7 +205,6 @@ fvgs = detect_fvg(df)
 
 fig = go.Figure()
 
-# Candele
 fig.add_trace(go.Candlestick(
     x=df["time"],
     open=df["open"],
@@ -239,11 +214,9 @@ fig.add_trace(go.Candlestick(
     name="XAUUSD H1"
 ))
 
-# Supporto / Resistenza
 fig.add_hline(y=resistenza, line_color="red", line_dash="dash", opacity=0.6)
 fig.add_hline(y=supporto, line_color="green", line_dash="dash", opacity=0.6)
 
-# Zona OTE
 fig.add_shape(
     type="rect",
     x0=df["time"].iloc[-80],
@@ -254,7 +227,6 @@ fig.add_shape(
     line=dict(color="gold", width=1),
 )
 
-# FVG
 for fvg in fvgs:
     fig.add_shape(
         type="rect",
@@ -266,7 +238,6 @@ for fvg in fvgs:
         line=dict(width=0),
     )
 
-# Entry / SL / TP
 if signal["signal"] in ["BUY", "SELL"]:
     entry = signal["entry"]
     sl = signal["sl"]
