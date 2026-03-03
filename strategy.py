@@ -116,7 +116,6 @@ def detect_fvg(df):
 
     return fvg_list
 
-
 def fvg_filter(df, breakout_type):
     fvgs = detect_fvg(df)
     last_close = df.iloc[-1]["close"]
@@ -147,7 +146,7 @@ def position_size(equity, risk_pct, entry, sl):
 # STRATEGIA COMPLETA
 # ============================
 
-def generate_signal(df, equity=10000, risk_pct=1, mode="Swing Trading ICT"):
+def generate_signal(df, equity=10000, risk_pct=1, mode="Swing Trading ICT", trend_h4="NEUTRAL"):
     df = swing_levels(df)
     df = macd(df)
 
@@ -160,6 +159,13 @@ def generate_signal(df, equity=10000, risk_pct=1, mode="Swing Trading ICT"):
         breakout = detect_breakout(df)
         if breakout is None:
             return {"signal": "NO TRADE", "reason": "Nessun breakout"}
+
+        # filtro trend
+        if trend_h4 == "BULL" and breakout == "BREAKOUT_DOWN":
+            return {"signal": "NO TRADE", "reason": "Trend H4 BULL, niente SELL"}
+
+        if trend_h4 == "BEAR" and breakout == "BREAKOUT_UP":
+            return {"signal": "NO TRADE", "reason": "Trend H4 BEAR, niente BUY"}
 
         pullback = detect_pullback(df, breakout)
         if pullback is None:
@@ -206,7 +212,7 @@ def generate_signal(df, equity=10000, risk_pct=1, mode="Swing Trading ICT"):
             }
 
     # ============================
-    # SCALPING ICT (SL realistico)
+    # SCALPING ICT (SL realistico + filtro trend)
     # ============================
 
     if mode == "Scalping ICT":
@@ -217,10 +223,17 @@ def generate_signal(df, equity=10000, risk_pct=1, mode="Swing Trading ICT"):
 
         for fvg in fvgs[::-1]:
 
+            # filtro trend
+            if trend_h4 == "BULL" and fvg["type"] == "BEAR":
+                continue
+
+            if trend_h4 == "BEAR" and fvg["type"] == "BULL":
+                continue
+
             # BUY SCALPING
             if fvg["type"] == "BULL" and fvg["start"] <= last["close"] <= fvg["end"]:
 
-                sl = prev["low"] - 0.05   # SL vicino
+                sl = prev["low"] - 0.20  # SL minimo garantito
                 tp = last["close"] + (last["close"] - sl) * 1.5
 
                 lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
@@ -237,7 +250,7 @@ def generate_signal(df, equity=10000, risk_pct=1, mode="Swing Trading ICT"):
             # SELL SCALPING
             if fvg["type"] == "BEAR" and fvg["end"] <= last["close"] <= fvg["start"]:
 
-                sl = prev["high"] + 0.05  # SL vicino
+                sl = prev["high"] + 0.20  # SL minimo garantito
                 tp = last["close"] - (sl - last["close"]) * 1.5
 
                 lot_size, risk_amount = position_size(equity, risk_pct, last["close"], sl)
