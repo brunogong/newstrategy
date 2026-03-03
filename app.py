@@ -232,8 +232,8 @@ for fvg in fvgs:
         type="rect",
         x0=df["time"].iloc[fvg["index"]-2],
         x1=df["time"].iloc[fvg["index"]],
-        y0=fvg["start"],
-        y1=fvg["end"],
+        y0=min(fvg["start"], fvg["end"]),
+        y1=max(fvg["start"], fvg["end"]),
         fillcolor="rgba(0,150,255,0.15)" if fvg["type"] == "BULL" else "rgba(255,0,0,0.15)",
         line=dict(width=0),
     )
@@ -275,4 +275,3 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
-
